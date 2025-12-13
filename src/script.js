@@ -519,41 +519,133 @@ renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
 /**
- * Sounds
+ * Sounds setup with lil-gui
  */
 const audioListener = new THREE.AudioListener();
 camera.add(audioListener);
 
 const emperorAudio = new THREE.PositionalAudio(audioListener);
 let isAudioLoaded = false;
-
-const soundFolder = gui.addFolder("Sound");
-// audioLoader.load("/music/LastChristmas.mp3", (buffer) => {
-audioLoader.load("/music/Cristmas.mp3", (buffer) => {
-  emperorAudio.setBuffer(buffer);
-  emperorAudio.setLoop(true);
-  emperorAudio.setVolume(2);
-
-  isAudioLoaded = true;
-
-  scene.add(emperorAudio);
-});
-
 let audioStarted = false;
 
-const startAudio = () => {
-  if (isAudioLoaded && !audioStarted) {
-    if (audioListener.context.state === "suspended") {
-      audioListener.context.resume();
-    }
+const soundFolder = gui.addFolder("Sound");
 
-    emperorAudio.play();
-    audioStarted = true;
-
-    window.removeEventListener("click", startAudio);
-    window.removeEventListener("touchend", startAudio);
-  }
+// --- 1. Об'єкт для контролерів lil-gui ---
+const volumeControl = {
+    // Встановлюємо початкову гучність
+    volume: 2
 };
+
+const soundControls = {
+    // Список доступних звуків (відображувана назва: шлях до файлу)
+    currentSound: "/music/Cristmas.mp3", // Початкове значення
+    sounds: {
+        "Christmas Song 1": "/music/Cristmas.mp3",
+        "Christmas Song 2 (Last Christmas)": "/music/LastChristmas.mp3"
+    },
+
+    /**
+     * Завантажує та змінює поточний аудіофайл
+     */
+    changeSound: function() {
+        if (emperorAudio.isPlaying) {
+            emperorAudio.stop();
+        }
+        
+        // Встановлюємо isAudioLoaded на false, поки не завантажиться новий буфер
+        isAudioLoaded = false; 
+
+        // Завантажуємо новий аудіофайл
+        audioLoader.load(soundControls.currentSound, (buffer) => {
+            emperorAudio.setBuffer(buffer);
+            emperorAudio.setLoop(true);
+            
+            // Встановлюємо гучність з контролера GUI
+            emperorAudio.setVolume(volumeControl.volume); 
+            
+            isAudioLoaded = true;
+
+            scene.add(emperorAudio); // Додаємо до сцени, якщо не було додано
+
+            // Якщо аудіо вже було запущено, запускаємо його знову
+            if (audioStarted) {
+                if (audioListener.context.state === "suspended") {
+                    audioListener.context.resume();
+                }
+                emperorAudio.play();
+            }
+        },
+        // Обробник прогресу (залишаємо для прикладу)
+        () => {
+            // console.log('Audio loading progress...');
+        },
+        // Обробник помилок завантаження
+        (error) => {
+            console.error('Error loading audio:', error);
+        });
+    }
+};
+
+// Завантажуємо початковий звук при старті
+soundControls.changeSound();
+
+
+// --- 2. Функція для першого запуску звуку (через інтеракцію) ---
+const startAudio = () => {
+    if (isAudioLoaded && !audioStarted) {
+        // Розблокування контексту аудіо (необхідно у більшості браузерів)
+        if (audioListener.context.state === "suspended") {
+            audioListener.context.resume();
+        }
+
+        emperorAudio.play();
+        audioStarted = true;
+
+        // Видаляємо слухачів після першого запуску
+        window.removeEventListener("click", startAudio);
+        window.removeEventListener("touchend", startAudio);
+    }
+};
+
+// Додаємо слухачів для запуску (перший клік/дотик)
+window.addEventListener("click", startAudio);
+window.addEventListener("touchend", startAudio);
+
+
+// --- 3. Контролери lil-gui ---
+
+// Контролер вибору аудіо
+soundFolder
+    .add(soundControls, 'currentSound', soundControls.sounds)
+    .name('Select Audio')
+    .onChange(() => {
+        soundControls.changeSound();
+    });
+
+// Контролер гучності (виправлення помилки: використовуємо допоміжний об'єкт volumeControl)
+soundFolder
+    .add(volumeControl, 'volume', 0, 5, 0.1) 
+    .name('Volume')
+    .onChange((value) => {
+        // Оновлюємо гучність безпосередньо через метод PositionalAudio
+        emperorAudio.setVolume(value);
+    });
+
+// Контролер відтворення/паузи
+const playbackControl = {
+    togglePlayback: () => {
+        if (emperorAudio.isPlaying) {
+            emperorAudio.pause();
+        } else {
+            // Перевіряємо, чи був звук запущений хоча б раз, щоб не порушувати правила браузера
+            if (isAudioLoaded) {
+                startAudio(); // Перевіряє, чи audioStarted, і відтворює
+            }
+        }
+    }
+};
+
+soundFolder.add(playbackControl, 'togglePlayback').name('Play / Pause');
 /**
  * Animate
  */
